@@ -9,7 +9,11 @@ Interaktivní webová hra na procvičování kanji dle seznamu používaného v 
 
 ## 💻 Jak spustit
 Stačí otevřít `index.html` v prohlížeči nebo navštívit  
-👉 https://estermilostna.github.io/
+👉 https://estermilostna.github.io/japon-tina-pro-neoborov-studenty---procvi-ov-n-kanji
 
 ## 🪪 Licence
 MIT License © 2025 Ester Milostná
+
+##💬 Poznámka
+Tento projekt vznikl jako studijní pomůcka a stále se ještě vyvíjí.
+Pokud ve slovíčkách najdete chybějící kanji, neváhejte mi napsat, nebo přispět pull requestem! 😉
