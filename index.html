@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kanji – dvojitý kvíz (čtení + význam)</title>
+
+<style>
+:root{
+  --bg:#0b1220;--card:#101a2e;--muted:#7c8aa5;
+  --accent:#7aa2ff;--good:#35c759;--bad:#ff453a;--text:#e6ecff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;font-family:system-ui,"Noto Sans JP",sans-serif;
+  background:#0b1220;color:var(--text);
+  display:grid;place-items:center;padding:24px
+}
+.wrap{width:min(900px,100%);display:grid;gap:16px}
+.card{
+  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01));
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:18px;padding:20px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);
+  backdrop-filter:blur(6px)
+}
+h1{margin:0 0 4px;font-size:clamp(20px,3.6vw,28px)}
+.sub{color:var(--muted);font-size:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;gap:12px}
+@media(min-width:820px){
+  .grid{grid-template-columns:1.1fr .9fr;align-items:start}
+}
+.kanji{
+  font-size:clamp(48px,8vw,72px);font-weight:900;letter-spacing:.04em;
+}
+.btn{
+  border:1px solid rgba(255,255,255,.15);background:#0f1b35;
+  color:var(--text);padding:10px 14px;border-radius:12px;
+  cursor:pointer;font-weight:600
+}
+.btn.primary{
+  background:linear-gradient(180deg,#2748ff,#1b2dcc);
+  border-color:#2b43ff
+}
+.choice{
+  padding:10px 12px;border:1px solid rgba(255,255,255,.15);
+  border-radius:12px;background:#1b2645;color:var(--text);
+  cursor:pointer;transition:background .2s,transform .1s;
+}
+.choice:hover{
+  background:#223060;transform:translateY(-1px);
+}
+.choice.selected{
+  background:var(--accent);color:#fff;font-weight:600;
+}
+.small{font-size:12px;color:var(--muted)}
+.hr{height:1px;background:rgba(255,255,255,.08);margin:10px 0}
+.result{min-height:24px;font-weight:800;margin-top:8px}
+.ok{color:var(--good)} .bad{color:var(--bad)}
+.stat{
+  padding:10px;border-radius:10px;background:#0d1730;
+  border:1px solid rgba(255,255,255,.08);text-align:center
+}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+
+  <div class="card">
+    <h1>Kanji – kvíz: vyber čtení i význam</h1>
+    <div class="sub">Zobrazí se <b>kanji / čtení / význam</b> → vyber správné dvojice. Obě volby musí být správně.</div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      
+      <label><input type="checkbox" id="noRepeat" checked> Bez opakování</label>
+      <label><input type="checkbox" id="autoNext"> Po chybě automaticky dál</label>
+
+      <label>Báze:
+        <select id="base">
+          <option value="kanji">Kanji → čtení + význam</option>
+          <option value="reading">Čtení → kanji + význam</option>
+          <option value="meaning">Význam → kanji + čtení</option>
+        </select>
+      </label>
+
+      <label>Rozsah kanji:
+        <input id="rangeFrom" type="number" min="1" max="125" value="1" style="width:4.5em">
+        –
+        <input id="rangeTo" type="number" min="1" max="125" value="20" style="width:4.5em">
+      </label>
+
+      <button id="applyRange" class="btn">Nastavit</button>
+      <button id="reset" class="btn">↺ Reset</button>
+
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <div class="card">
+      <div class="small" id="promptLabel">Kanji</div>
+      <div id="kanji" class="kanji">—</div>
+
+      <div class="hr"></div>
+      <div class="small" id="labelGroup1">Vyber čtení (kana)</div>
+      <div id="readingChoices" class="select"></div>
+
+      <div class="small" style="margin-top:10px" id="labelGroup2">Vyber význam (česky)</div>
+      <div id="meaningChoices" class="select"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button id="submit" class="btn primary">Potvrdit</button>
+        <button id="skip" class="btn">Přeskočit</button>
+      </div>
+
+      <div id="feedback" class="result"></div>
+    </div>
+
+    <div class="card">
+      <div class="small">📊 Statistiky</div>
+      <div class="hr"></div>
+
+      <div class="stats">
+        <div class="stat"><div class="small">Správně</div><div id="ok">0</div></div>
+        <div class="stat"><div class="small">Chybně</div><div id="bad">0</div></div>
+        <div class="stat"><div class="small">Série</div><div id="streak">0</div></div>
+        <div class="stat"><div class="small">Čas</div><div id="time">0:00</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   🔤 DEMO DATA — tady později nahradíš pravými slovíčky
+   ============================================================ */
+// === Kanji 1–10 ===
+const WORDS = [
+  { surface:"一", readingOK:["いち"], meaning:"jedna", kanjiIds:[1] },
+  { surface:"一日", readingOK:["いちにち"], meaning:"1 den", kanjiIds:[1, 21] },
+  { surface:"一月", readingOK:["いちがつ"], meaning:"leden", kanjiIds:[1, 20] },
+  { surface:"一つ", readingOK:["ひとつ"], meaning:"1 položka", kanjiIds:[1] },
+  { surface:"一人", readingOK:["ひとり"], meaning:"1 člověk / osoba", kanjiIds:[1, 37] },
+  { surface:"二", readingOK:["に"], meaning:"dva", kanjiIds:[2] },
+  { surface:"二年生", readingOK:["にねんせい"], meaning:"druhák", kanjiIds:[2, 22, 32] },
+  { surface:"二つ", readingOK:["ふたつ"], meaning:"2 položky", kanjiIds:[2] },
+  { surface:"二日", readingOK:["ふつか"], meaning:"druhého / 2 dny", kanjiIds:[2, 21] },
+  { surface:"二人", readingOK:["ふたり"], meaning:"2 lidi", kanjiIds:[2, 37] },
+  { surface:"三", readingOK:["さん"], meaning:"tři", kanjiIds:[3] },
+  { surface:"三月", readingOK:["さんがつ"], meaning:"březen", kanjiIds:[3, 20] },
+  { surface:"三人", readingOK:["さんにん"], meaning:"3 lidé", kanjiIds:[3, 37] },
+  { surface:"三つ", readingOK:["みっつ"], meaning:"3 položky", kanjiIds:[3] },
+  { surface:"三日", readingOK:["みっか"], meaning:"třetího / 3 dny", kanjiIds:[3, 21] },
+  { surface:"三日月", readingOK:["みかづき"], meaning:"srpek měsíce", kanjiIds:[3, 21, 20] },
+  { surface:"四月", readingOK:["しがつ"], meaning:"duben", kanjiIds:[4, 20] },
+  { surface:"四国", readingOK:["しこく"], meaning:"ostrov Šikoku", kanjiIds:[4] },
+  { surface:"四角", readingOK:["しかく"], meaning:"čtverec", kanjiIds:[4, 95] },
+  { surface:"四", readingOK:["よん"], meaning:"čtyři", kanjiIds:[4] },
+  { surface:"四つ", readingOK:["よっつ"], meaning:"4 položky", kanjiIds:[4] },
+  { surface:"四日", readingOK:["よっか"], meaning:"čtvrtého / 4 dny", kanjiIds:[4, 21] },
+  { surface:"五", readingOK:["ご"], meaning:"pět", kanjiIds:[5] },
+  { surface:"五月", readingOK:["ごがつ"], meaning:"květen", kanjiIds:[5, 20] },
+  { surface:"五人", readingOK:["ごにん"], meaning:"5 lidí", kanjiIds:[5, 37] },
+  { surface:"五つ", readingOK:["いつつ"], meaning:"5 položek", kanjiIds:[5] },
+  { surface:"五日", readingOK:["いつか"], meaning:"pátého / 5 dní", kanjiIds:[5, 21] },
+  { surface:"六", readingOK:["ろく"], meaning:"šest", kanjiIds:[6] },
+  { surface:"六月", readingOK:["ろくがつ"], meaning:"červen", kanjiIds:[6, 20] },
+  { surface:"六人", readingOK:["ろくにん"], meaning:"6 lidí", kanjiIds:[6, 37] },
+  { surface:"六つ", readingOK:["むっつ"], meaning:"6 položek", kanjiIds:[6] },
+  { surface:"六日", readingOK:["むいか"], meaning:"šestého / 6 dní", kanjiIds:[6, 21] },
+  { surface:"七月", readingOK:["しちがつ"], meaning:"červenec", kanjiIds:[7, 20] },
+  { surface:"七人", readingOK:["しちにん"], meaning:"7 lidí", kanjiIds:[7, 37] },
+  { surface:"七", readingOK:["なな"], meaning:"sedm", kanjiIds:[7] },
+  { surface:"七つ", readingOK:["ななつ"], meaning:"7 položek", kanjiIds:[7] },
+  { surface:"七日", readingOK:["なのか"], meaning:"sedmého / 7 dní", kanjiIds:[7, 21] },
+  { surface:"八", readingOK:["はち"], meaning:"osm", kanjiIds:[8] },
+  { surface:"八月", readingOK:["はちがつ"], meaning:"srpen", kanjiIds:[8, 20] },
+  { surface:"八人", readingOK:["はちにん"], meaning:"osm lidí", kanjiIds:[8, 37] },
+  { surface:"八つ", readingOK:["やっつ"], meaning:"osm položek", kanjiIds:[8] },
+  { surface:"八日", readingOK:["ようか"], meaning:"osmého", kanjiIds:[8, 21] },
+  { surface:"九", readingOK:["きゅう"], meaning:"devět", kanjiIds:[9] },
+  { surface:"九人", readingOK:["きゅうにん"], meaning:"devět lidí", kanjiIds:[9, 37] },
+  { surface:"九月", readingOK:["くがつ"], meaning:"září", kanjiIds:[9, 20] },
+  { surface:"九つ", readingOK:["ここのつ"], meaning:"devět položek", kanjiIds:[9] },
+  { surface:"九日", readingOK:["ここのか"], meaning:"devátého", kanjiIds:[9, 21] },
+  { surface:"十", readingOK:["じゅう"], meaning:"deset", kanjiIds:[10] },
+  { surface:"十人", readingOK:["じゅうにん"], meaning:"deset lidí", kanjiIds:[10, 37] },
+  { surface:"十月", readingOK:["じゅうがつ"], meaning:"říjen", kanjiIds:[10, 20] },
+  { surface:"十", readingOK:["とお"], meaning:"deset položek", kanjiIds:[10] },
+  { surface:"十日", readingOK:["とおか"], meaning:"desátého", kanjiIds:[10, 21] },
+  { surface:"百", readingOK:["ひゃく"], meaning:"100", kanjiIds:[11] },
+  { surface:"三百", readingOK:["さんびゃく"], meaning:"300", kanjiIds:[3, 11] },
+  { surface:"六百", readingOK:["ろっぴゃく"], meaning:"600", kanjiIds:[6, 11] },
+  { surface:"八百", readingOK:["はっぴゃく"], meaning:"800", kanjiIds:[8, 11] },
+  { surface:"千", readingOK:["せん"], meaning:"1000", kanjiIds:[12] },
+  { surface:"三千", readingOK:["さんぜん"], meaning:"3000", kanjiIds:[3, 12] },
+  { surface:"六千", readingOK:["ろくせん"], meaning:"6000", kanjiIds:[6, 12] },
+  { surface:"八千", readingOK:["はっせん"], meaning:"8000", kanjiIds:[8, 12] },
+  { surface:"上", readingOK:["うえ"], meaning:"nahoře, na", kanjiIds:[13] },
+  { surface:"目上", readingOK:["めうえ"], meaning:"výše postavený (člověk)", kanjiIds:[42, 13] },
+  { surface:"年上", readingOK:["としうえ"], meaning:"starší (člověk)", kanjiIds:[22, 13] },
+  { surface:"村上", readingOK:["むらかみ"], meaning:"Murakami", kanjiIds:[63, 13] },
+  { surface:"上がる", readingOK:["あがる"], meaning:"stoupat, zvedat", kanjiIds:[13] },
+  { surface:"上げる", readingOK:["あげる"], meaning:"zvedat, dát", kanjiIds:[13] },
+  { surface:"上る", readingOK:["のぼる"], meaning:"stoupat, vystupovat", kanjiIds:[13] },
+  { surface:"上手", readingOK:["じょうず"], meaning:"je dobrý (v něčem)", kanjiIds:[13, 45] },
+  { surface:"下", readingOK:["した"], meaning:"dole, pod", kanjiIds:[14] },
+  { surface:"川下", readingOK:["かわした"], meaning:"Kawašita", kanjiIds:[27, 14] },
+  { surface:"下がる", readingOK:["さがる"], meaning:"klesat, ustoupit", kanjiIds:[14] },
+  { surface:"下げる", readingOK:["さげる"], meaning:"snížit", kanjiIds:[14] },
+  { surface:"下さる", readingOK:["くださる"], meaning:"dát mi", kanjiIds:[14] },
+  { surface:"下さい", readingOK:["ください"], meaning:"dejte mi prosím", kanjiIds:[14] },
+  { surface:"上下", readingOK:["じょうげ"], meaning:"nahoru a dolu", kanjiIds:[13, 14] },
+  { surface:"下水", readingOK:["げすい"], meaning:"odpadní voda", kanjiIds:[14, 67] },
+  { surface:"左", readingOK:["ひだり"], meaning:"vlevo", kanjiIds:[15] },
+  { surface:"左手", readingOK:["ひだりて"], meaning:"levá dlaň", kanjiIds:[15, 45] },
+  { surface:"左右", readingOK:["さゆう"], meaning:"nalevo i napravo", kanjiIds:[15, 16] },
+  { surface:"左折", readingOK:["させつ"], meaning:"zabočení doleva", kanjiIds:[15] },
+  { surface:"右", readingOK:["みぎ"], meaning:"vpravo", kanjiIds:[16] },
+  { surface:"左右", readingOK:["さゆう"], meaning:"nalevo i napravo", kanjiIds:[15, 16] },
+  { surface:"右折", readingOK:["うせつ"], meaning:"zabočení doprava", kanjiIds:[16] },
+  { surface:"中", readingOK:["なか"], meaning:"uvnitř", kanjiIds:[17] },
+  { surface:"田中", readingOK:["たなか"], meaning:"Tanaka", kanjiIds:[30, 17] },
+  { surface:"中国", readingOK:["ちゅうごく"], meaning:"Čína", kanjiIds:[17] },
+  { surface:"中学校", readingOK:["ちゅうがっこう"], meaning:"druhý stupeň ZŠ", kanjiIds:[17, 61, 62] },
+  { surface:"一日中", readingOK:["いちにちじゅう"], meaning:"celý den", kanjiIds:[1, 21, 17] },
+  { surface:"中年", readingOK:["ちゅうねん"], meaning:"střední věk", kanjiIds:[17, 22] },
+  { surface:"大きい", readingOK:["おおきい"], meaning:"velký", kanjiIds:[18] },
+  { surface:"大学", readingOK:["だいがく"], meaning:"univerzita", kanjiIds:[18, 61] },
+  { surface:"大事", readingOK:["だいじ"], meaning:"důležitý", kanjiIds:[18] },
+  { surface:"大人", readingOK:["おとな"], meaning:"dospělý člověk", kanjiIds:[18, 37] },
+  { surface:"小さい", readingOK:["ちいさい"], meaning:"malý", kanjiIds:[19] },
+  { surface:"小雨", readingOK:["こさめ"], meaning:"malý dážď", kanjiIds:[19, 77] },
+  { surface:"小学生", readingOK:["しょうがくせい"], meaning:"školák (základka)", kanjiIds:[19, 61, 32] },
+  { surface:"月", readingOK:["つき"], meaning:"měsíc", kanjiIds:[20] },
+  { surface:"二月", readingOK:["にがつ"], meaning:"únor", kanjiIds:[2, 20] },
+  { surface:"二か月", readingOK:["にかげつ"], meaning:"dva měsíce", kanjiIds:[2, 20] },
+  { surface:"月曜日", readingOK:["げつようび"], meaning:"pondělí", kanjiIds:[20, 120, 21] },
+  { surface:"日", readingOK:["ひ"], meaning:"den", kanjiIds:[21] },
+  { surface:"日の出", readingOK:["ひので"], meaning:"východ slunce", kanjiIds:[21, 53] },
+  { surface:"一日", readingOK:["いちにち"], meaning:"jeden den", kanjiIds:[1, 21] },
+  { surface:"日曜日", readingOK:["にちようび"], meaning:"neděle", kanjiIds:[21, 120] },
+  { surface:"日本", readingOK:["にほん"], meaning:"Japonsko", kanjiIds:[21, 58] },
+  { surface:"本日", readingOK:["ほんじつ"], meaning:"dnes (formálněji)", kanjiIds:[58, 21] },
+  { surface:"一日", readingOK:["ついたち"], meaning:"prvního", kanjiIds:[1, 21] },
+  { surface:"三日", readingOK:["みっか"], meaning:"třetího", kanjiIds:[3, 21] },
+  { surface:"今日", readingOK:["きょう"], meaning:"dnes", kanjiIds:[21] },
+  { surface:"年", readingOK:["とし"], meaning:"rok", kanjiIds:[22] },
+  { surface:"年上", readingOK:["としうえ"], meaning:"starší", kanjiIds:[22, 13] },
+  { surface:"今年", readingOK:["ことし"], meaning:"letos", kanjiIds:[22] },
+  { surface:"同い年", readingOK:["おないどし"], meaning:"rovnako starý", kanjiIds:[103, 22] },
+  { surface:"2000年", readingOK:["にせんねん"], meaning:"rok 2000", kanjiIds:[22] },
+  { surface:"一年生", readingOK:["いちねんせい"], meaning:"student prvního ročníku", kanjiIds:[1, 22, 32] },
+  { surface:"少年", readingOK:["しょうねん"], meaning:"chlapec", kanjiIds:[83, 22] },
+  { surface:"青年", readingOK:["せいねん"], meaning:"mladík", kanjiIds:[79, 22] },
+  { surface:"早い", readingOK:["はやい"], meaning:"brzký", kanjiIds:[23] },
+  { surface:"早口", readingOK:["はやくち"], meaning:"rychlé mluvení", kanjiIds:[23, 44] },
+  { surface:"早朝", readingOK:["そうちょう"], meaning:"brzké ráno", kanjiIds:[23, 121] },
+  { surface:"木", readingOK:["き"], meaning:"strom, dřevo", kanjiIds:[24] },
+  { surface:"木村", readingOK:["きむら"], meaning:"Kimura (běžné jap. příjmení)", kanjiIds:[24, 63] },
+  { surface:"木曜日", readingOK:["もくようび"], meaning:"čtvrtek", kanjiIds:[24, 120, 21] },
+  { surface:"大木", readingOK:["たいぼく"], meaning:"velký strom ", kanjiIds:[18, 24] },
+  { surface:"林", readingOK:["はやし"], meaning:"les (obhospodařovaný člověkem)", kanjiIds:[25] },
+  { surface:"小林", readingOK:["こばやし"], meaning:"Kobajaši", kanjiIds:[19, 25] },
+  { surface:"森林", readingOK:["しんりん"], meaning:"lesy (obecný termín)", kanjiIds:[65, 25] },
+  { surface:"山林", readingOK:["さんりん"], meaning:"horský les", kanjiIds:[26, 25] },
+  { surface:"林業", readingOK:["りんぎょう"], meaning:"lesnictví", kanjiIds:[25] },
+  { surface:"山", readingOK:["やま"], meaning:"hora", kanjiIds:[26] },
+  { surface:"山下", readingOK:["やました"], meaning:"Jamašita", kanjiIds:[26, 14] },
+  { surface:"火山", readingOK:["かざん"], meaning:"sopka", kanjiIds:[68, 26] },
+  { surface:"川", readingOK:["かわ"], meaning:"řeka", kanjiIds:[27] },
+  { surface:"川下", readingOK:["かわしも"], meaning:"dolní tok řeky", kanjiIds:[27, 14] },
+  { surface:"山川", readingOK:["やまかわ"], meaning:"hory a řeky; Jamakawa", kanjiIds:[26, 27] },
+  { surface:"早川", readingOK:["はやかわ"], meaning:"Hajakawa", kanjiIds:[23, 27] },
+  { surface:"小川", readingOK:["おがわ"], meaning:"potůček; Ogawa (příjmení)", kanjiIds:[19, 27] },
+  { surface:"土", readingOK:["つち"], meaning:"půda, země, zemina", kanjiIds:[28] },
+  { surface:"土曜日", readingOK:["どようび"], meaning:"sobota", kanjiIds:[28, 120, 21] },
+  { surface:"空", readingOK:["そら"], meaning:"obloha, nebe", kanjiIds:[29] },
+  { surface:"大空", readingOK:["おおぞら"], meaning:"širé nebe", kanjiIds:[18, 29] },
+  { surface:"青空", readingOK:["あおぞら"], meaning:"modrá obloha", kanjiIds:[79, 29] },
+  { surface:"空耳", readingOK:["そらみみ"], meaning:"přeslechnutí se", kanjiIds:[29, 43] },
+  { surface:"空手", readingOK:["からて"], meaning:"karate", kanjiIds:[29, 45] },
+  { surface:"空っぽ", readingOK:["からっぽ"], meaning:"prázdno", kanjiIds:[29] },
+  { surface:"空く", readingOK:["あく"], meaning:"uvolnit se (čas, prostor...)", kanjiIds:[29] },
+  { surface:"空く", readingOK:["すく"], meaning:"vyprádznit se (prostor)", kanjiIds:[29] },
+  { surface:"空気", readingOK:["くうき"], meaning:"vzduch, atmosféra", kanjiIds:[29, 50] },
+  { surface:"田んぼ", readingOK:["たんぼ"], meaning:"rýžové pole", kanjiIds:[30] },
+  { surface:"山田", readingOK:["やまだ"], meaning:"Jamada", kanjiIds:[26, 30] },
+  { surface:"本田", readingOK:["ほんだ"], meaning:"Honda", kanjiIds:[58, 30] },
+  { surface:"水田", readingOK:["すいでん"], meaning:"rýžové políčko", kanjiIds:[67, 30] },
+  { surface:"天の川", readingOK:["あまのがわ"], meaning:"mléčná dráha", kanjiIds:[31, 27] },
+  { surface:"天下り", readingOK:["あまくだり"], meaning:"”zlatý padák”(zajištění lukrativního místa po výkonu vysoké fce)", kanjiIds:[31, 14] },
+  { surface:"天気", readingOK:["てんき"], meaning:"počasí", kanjiIds:[31, 50] },
+  { surface:"天国", readingOK:["てんごく"], meaning:"ráj", kanjiIds:[31] },
+  { surface:"天下", readingOK:["てんか"], meaning:"”podnebesí” - celý svět", kanjiIds:[31, 14] },
+  { surface:"生きる", readingOK:["いきる"], meaning:"žít", kanjiIds:[32] },
+  { surface:"生かす", readingOK:["いかす"], meaning:"využít (schopnost, potenciál)", kanjiIds:[32] },
+  { surface:"生け花", readingOK:["いけばな"], meaning:"(dosl. udžování květin na živu)", kanjiIds:[32, 33] },
+  { surface:"生まれる", readingOK:["うまれる"], meaning:"narodit se, zrodit se", kanjiIds:[32] },
+  { surface:"生える", readingOK:["はえる"], meaning:"růst (pro rostliny, porost…)", kanjiIds:[32] },
+  { surface:"生", readingOK:["なま"], meaning:"syrový, tepelně neupravený, nepasterizované", kanjiIds:[32] },
+  { surface:"先生", readingOK:["せんせい"], meaning:"uctivé oslovení pro učitele", kanjiIds:[56, 32] },
+  { surface:"学生", readingOK:["がくせい"], meaning:"školák", kanjiIds:[61, 32] },
+  { surface:"三年生", readingOK:["さんねんせい"], meaning:"student třetího ročníku", kanjiIds:[3, 22, 32] },
+  { surface:"生年月日", readingOK:["せいねんがっぴ"], meaning:"datum narození", kanjiIds:[32, 22, 20, 21] },
+  { surface:"人生", readingOK:["じんせい"], meaning:"lidský život", kanjiIds:[37, 32] },
+  { surface:"一生", readingOK:["いっしょう"], meaning:"celý život", kanjiIds:[1, 32] },
+  { surface:"花", readingOK:["はな"], meaning:"květina", kanjiIds:[33] },
+  { surface:"花見", readingOK:["はなみ"], meaning:"sledování rozkvetlých sakur", kanjiIds:[33, 47] },
+  { surface:"火花", readingOK:["ひばな"], meaning:"jiskra", kanjiIds:[68, 33] },
+  { surface:"草", readingOK:["くさ"], meaning:"tráva, bylina, slangovo LOL", kanjiIds:[34] },
+  { surface:"七草", readingOK:["ななくさ"], meaning:"sedm jarních bylin", kanjiIds:[7, 34] },
+  { surface:"多年草", readingOK:["たねんそう"], meaning:"víceletka", kanjiIds:[82, 22, 34] },
+  { surface:"草書", readingOK:["そうしょ"], meaning:"styl kurzivního kaligrafického písma", kanjiIds:[34] },
+  { surface:"虫", readingOK:["むし"], meaning:"hmyz, havěť", kanjiIds:[35] },
+  { surface:"毛虫", readingOK:["けむし"], meaning:"housenka", kanjiIds:[114, 35] },
+  { surface:"犬", readingOK:["いぬ"], meaning:"pes", kanjiIds:[36] },
+  { surface:"子犬", readingOK:["こいぬ"], meaning:"štěně", kanjiIds:[41, 36] },
+  { surface:"小犬", readingOK:["こいぬ"], meaning:"malý pes", kanjiIds:[19, 36] },
+  { surface:"人", readingOK:["ひと"], meaning:"člověk", kanjiIds:[37] },
+  { surface:"五人", readingOK:["ごにん"], meaning:"pět lidí", kanjiIds:[5, 37] },
+  { surface:"本人", readingOK:["ほんにん"], meaning:"dotyčný člověk", kanjiIds:[58, 37] },
+  { surface:"人気", readingOK:["にんき"], meaning:"popularita", kanjiIds:[37, 50] },
+  { surface:"日本人", readingOK:["にほんじん"], meaning:"Japonec", kanjiIds:[21, 58, 37] },
+  { surface:"人口", readingOK:["じんこう"], meaning:"počet obyvatel", kanjiIds:[37, 44] },
+  { surface:"大人", readingOK:["おとな"], meaning:"dospělý člověk", kanjiIds:[18, 37] },
+  { surface:"名", readingOK:["な"], meaning:"jméno (spíše knižní)", kanjiIds:[38] },
+  { surface:"名人", readingOK:["めいじん"], meaning:"titul mistra tradičních jap. her", kanjiIds:[38, 37] },
+  { surface:"有名な", readingOK:["ゆうめいな"], meaning:"sláva", kanjiIds:[38] },
+  { surface:"有名人", readingOK:["ゆうめいじん"], meaning:"celebrita", kanjiIds:[38, 37] },
+  { surface:"名字", readingOK:["みょうじ"], meaning:"příjmení", kanjiIds:[38, 60] },
+  { surface:"大名", readingOK:["だいみょう"], meaning:"titul feudálních pánů středověkého Japonska", kanjiIds:[18, 38] },
+  { surface:"女", readingOK:["おんな"], meaning:"žena", kanjiIds:[39] },
+  { surface:"女の人", readingOK:["おんなのひと"], meaning:"žena (slušnější výraz než strozší ↑)", kanjiIds:[39, 37] },
+  { surface:"少女", readingOK:["しょうじょ"], meaning:"dívka", kanjiIds:[83, 39] },
+  { surface:"女子", readingOK:["じょし"], meaning:"ženy (např. ve sportu)", kanjiIds:[39, 41] },
+  { surface:"女性", readingOK:["じょせい"], meaning:"žena (označení pohlaví)", kanjiIds:[39] },
+  { surface:"女王", readingOK:["じょおう"], meaning:"královna", kanjiIds:[39, 70] },
+  { surface:"男", readingOK:["おとこ"], meaning:"muž", kanjiIds:[40] },
+  { surface:"男の人", readingOK:["おとこのひと"], meaning:"muž (slušnější výraz)", kanjiIds:[40, 37] },
+  { surface:"男女", readingOK:["だんじょ"], meaning:"muži a ženy", kanjiIds:[40, 39] },
+  { surface:"男子", readingOK:["だんし"], meaning:"muži (např. ve sportu)", kanjiIds:[40, 41] },
+  { surface:"長男", readingOK:["ちょうなん"], meaning:"nejstarší syn", kanjiIds:[90, 40] },
+  { surface:"女の子", readingOK:["おんなのこ"], meaning:"dívka", kanjiIds:[39, 41] },
+  { surface:"男の子", readingOK:["おとこのこ"], meaning:"hoch", kanjiIds:[40, 41] },
+  { surface:"子ども", readingOK:["こども"], meaning:"dítě", kanjiIds:[41] },
+  { surface:"子犬", readingOK:["こいぬ"], meaning:"štěně", kanjiIds:[41, 36] },
+  { surface:"目", readingOK:["め"], meaning:"oko", kanjiIds:[42] },
+  { surface:"目上", readingOK:["めうえ"], meaning:"nadřízený, výše postavený", kanjiIds:[42, 13] },
+  { surface:"目下", readingOK:["めした"], meaning:"podřízený, nižšie postavený", kanjiIds:[42, 14] },
+  { surface:"五年目", readingOK:["ごねんめ"], meaning:"pátý rok", kanjiIds:[5, 22, 42] },
+  { surface:"名目上の", readingOK:["めいもくじょうの"], meaning:"formální (např. pouze formální vůdce)", kanjiIds:[38, 42, 13] },
+  { surface:"耳", readingOK:["みみ"], meaning:"ucho", kanjiIds:[43] },
+  { surface:"左耳", readingOK:["ひだりみみ"], meaning:"levé ucho", kanjiIds:[15, 43] },
+  { surface:"空耳", readingOK:["そらみみ"], meaning:"přeslechnutí se, “slyšiny”", kanjiIds:[29, 43] },
+  { surface:"耳目", readingOK:["じもく"], meaning:"pozornost", kanjiIds:[43, 42] },
+  { surface:"口", readingOK:["くち"], meaning:"ústa", kanjiIds:[44] },
+  { surface:"早口", readingOK:["はやくち"], meaning:"rychlé mluvení", kanjiIds:[23, 44] },
+  { surface:"一口", readingOK:["ひとくち"], meaning:"jedno sousto", kanjiIds:[1, 44] },
+  { surface:"人口", readingOK:["じんこう"], meaning:"počet obyvatel", kanjiIds:[37, 44] },
+  { surface:"手", readingOK:["て"], meaning:"ruka", kanjiIds:[45] },
+  { surface:"右手", readingOK:["みぎて"], meaning:"pravá ruka", kanjiIds:[16, 45] },
+  { surface:"空手", readingOK:["からて"], meaning:"karate", kanjiIds:[29, 45] },
+  { surface:"手話", readingOK:["しゅわ"], meaning:"znaková řeč", kanjiIds:[45] },
+  { surface:"拍手", readingOK:["はくしゅ"], meaning:"potlesk", kanjiIds:[45] },
+  { surface:"上手な", readingOK:["じょうずな"], meaning:"zručný", kanjiIds:[13, 45] },
+  { surface:"下手な", readingOK:["へたな"], meaning:"nezručný", kanjiIds:[14, 45] },
+  { surface:"足", readingOK:["あし"], meaning:"noha", kanjiIds:[46] },
+  { surface:"足りる", readingOK:["たりる"], meaning:"stačit, mít dost", kanjiIds:[46] },
+  { surface:"足す", readingOK:["たす"], meaning:"přičítat ", kanjiIds:[46] },
+  { surface:"一足", readingOK:["いっそく"], meaning:"jeden pár (i jako numerativ pro páry)", kanjiIds:[1, 46] },
+  { surface:"見る", readingOK:["みる"], meaning:"vidět, dívat se", kanjiIds:[47] },
+  { surface:"見せる", readingOK:["みせる"], meaning:"ukázat", kanjiIds:[47] },
+  { surface:"見つける", readingOK:["みつける"], meaning:"najít", kanjiIds:[47] },
+  { surface:"月見", readingOK:["つきみ"], meaning:"sledování měsíce", kanjiIds:[20, 47] },
+  { surface:"見上げる", readingOK:["みあげる"], meaning:"vzhlížet", kanjiIds:[47, 13] },
+  { surface:"見本", readingOK:["みほん"], meaning:"vzor, vzorník", kanjiIds:[47, 58] },
+  { surface:"見学", readingOK:["けんがく"], meaning:"exkurze", kanjiIds:[47, 61] },
+  { surface:"一見", readingOK:["いっけん"], meaning:"první pohled", kanjiIds:[1, 47] },
+  { surface:"音", readingOK:["おと"], meaning:"zvuk", kanjiIds:[48] },
+  { surface:"足音", readingOK:["あしおと"], meaning:"zvuky kroků", kanjiIds:[46, 48] },
+  { surface:"本音", readingOK:["ほんね"], meaning:"pravé úmysly/názory,", kanjiIds:[58, 48] },
+  { surface:"音色", readingOK:["ねいろ"], meaning:"barva tónu", kanjiIds:[48] },
+  { surface:"五十音", readingOK:["ごじゅうおん"], meaning:"50 slabik hiragany/katakany", kanjiIds:[5, 10, 48] },
+  { surface:"音楽", readingOK:["おんがく"], meaning:"hudba", kanjiIds:[48] },
+  { surface:"子音", readingOK:["しいん"], meaning:"souhláska", kanjiIds:[41, 48] },
+  { surface:"母音", readingOK:["ぼいん"], meaning:"samohláska", kanjiIds:[105, 48] },
+  { surface:"力", readingOK:["ちから"], meaning:"síla, moc", kanjiIds:[49] },
+  { surface:"入力", readingOK:["にゅうりょく"], meaning:"PC input", kanjiIds:[52, 49] },
+  { surface:"学力", readingOK:["がくりょく"], meaning:"schopnost se učit", kanjiIds:[61, 49] },
+  { surface:"体力", readingOK:["たいりょく"], meaning:"fyzická síla", kanjiIds:[113, 49] },
+  { surface:"全力", readingOK:["ぜんりょく"], meaning:"ze všech sil", kanjiIds:[49] },
+  { surface:"人力車", readingOK:["じんりきしゃ"], meaning:"rikša", kanjiIds:[37, 49, 75] },
+  { surface:"気", readingOK:["き"], meaning:"nálada, energie", kanjiIds:[50] },
+  { surface:"元気", readingOK:["げんき"], meaning:"zdraví", kanjiIds:[50] },
+  { surface:"天気", readingOK:["てんき"], meaning:"počasí", kanjiIds:[31, 50] },
+  { surface:"本気", readingOK:["ほんき"], meaning:"vážnost", kanjiIds:[58, 50] },
+  { surface:"病気", readingOK:["びょうき"], meaning:"nemoc", kanjiIds:[50] },
+  { surface:"気分", readingOK:["きぶん"], meaning:"nálada", kanjiIds:[50, 124] },
+  { surface:"円", readingOK:["まる"], meaning:"kruh", kanjiIds:[51] },
+  { surface:"2000円", readingOK:["にせんえん"], meaning:"2000 jenů", kanjiIds:[51] },
+  { surface:"日本円", readingOK:["にほんえん"], meaning:"japonský jen", kanjiIds:[21, 58, 51] },
+  { surface:"入る", readingOK:["はいる"], meaning:"vstoupit", kanjiIds:[52] },
+  { surface:"入れる", readingOK:["いれる"], meaning:"vložit", kanjiIds:[52] },
+  { surface:"入口", readingOK:["いりぐち"], meaning:"vchod", kanjiIds:[52, 44] },
+  { surface:"気に入る", readingOK:["きにいる"], meaning:"zalíbit se", kanjiIds:[50, 52] },
+  { surface:"入学する", readingOK:["にゅうがくする"], meaning:"nastoupit na školu", kanjiIds:[52, 61] },
+  { surface:"出る", readingOK:["でる"], meaning:"vyjít ven", kanjiIds:[53] },
+  { surface:"出す", readingOK:["だす"], meaning:"vyndat ven", kanjiIds:[53] },
+  { surface:"出口", readingOK:["でぐち"], meaning:"východ", kanjiIds:[53, 44] },
+  { surface:"出来る", readingOK:["できる"], meaning:"dokázat, vzniknout", kanjiIds:[53] },
+  { surface:"出かける", readingOK:["でかける"], meaning:"vyrazit ven", kanjiIds:[53] },
+  { surface:"出発する", readingOK:["しゅっぱつする"], meaning:"vyrazit (např. vlak)", kanjiIds:[53] },
+  { surface:"立つ", readingOK:["たつ"], meaning:"postavit se", kanjiIds:[54] },
+  { surface:"立てる", readingOK:["たてる"], meaning:"postavit (něco/někoho)", kanjiIds:[54] },
+  { surface:"目立つ", readingOK:["めだつ"], meaning:"být výrazný", kanjiIds:[42, 54] },
+  { surface:"立ち上がる", readingOK:["たちあがる"], meaning:"povstat", kanjiIds:[54, 13] },
+  { surface:"自立する", readingOK:["じりつする"], meaning:"osamostatnit se", kanjiIds:[111, 54] },
+  { surface:"私立", readingOK:["しりつ"], meaning:"soukromý", kanjiIds:[54] },
+  { surface:"国立", readingOK:["こくりつ"], meaning:"státní", kanjiIds:[54] },
+  { surface:"中立", readingOK:["ちゅうりつ"], meaning:"neutralita", kanjiIds:[17, 54] },
+  { surface:"休む", readingOK:["やすむ"], meaning:"odpočívat, nejít do práce/do školy", kanjiIds:[55] },
+  { surface:"休み", readingOK:["やすみ"], meaning:"prázdniny, volno", kanjiIds:[55] },
+  { surface:"休日", readingOK:["きゅうじつ"], meaning:"nepracovní den", kanjiIds:[55, 21] },
+  { surface:"休校", readingOK:["きゅうこう"], meaning:"přerušení školy", kanjiIds:[55, 62] },
+  { surface:"先", readingOK:["さき"], meaning:"předek, před, ...", kanjiIds:[56] },
+  { surface:"先月", readingOK:["せんげつ"], meaning:"minulý měsíc", kanjiIds:[56, 20] },
+  { surface:"先日", readingOK:["せんじつ"], meaning:"nedávno", kanjiIds:[56, 21] },
+  { surface:"夕方", readingOK:["ゆうがた"], meaning:"večer (zhruba doba soumraku)", kanjiIds:[57] },
+  { surface:"夕べ", readingOK:["ゆうべ"], meaning:"večer (hovorovější), včera večer", kanjiIds:[57] },
+  { surface:"夕日", readingOK:["ゆうひ"], meaning:"zapadající slunce", kanjiIds:[57, 21] },
+  { surface:"夕食", readingOK:["ゆうしょく"], meaning:"večeře (formálnější)", kanjiIds:[57] },
+  { surface:"夕立", readingOK:["ゆうだち"], meaning:"večerní průtrž mračen", kanjiIds:[57, 54] },
+  { surface:"山本", readingOK:["やまもと"], meaning:"Jamamoto; úpatí hory", kanjiIds:[26, 58] },
+  { surface:"本", readingOK:["ほん"], meaning:"kniha", kanjiIds:[58] },
+  { surface:"日本", readingOK:["にほん、にっぽん"], meaning:"Japonsko", kanjiIds:[21, 58] },
+  { surface:"手本", readingOK:["てほん"], meaning:"vzor, předloha", kanjiIds:[45, 58] },
+  { surface:"見本", readingOK:["みほん"], meaning:"zkušební vzorek", kanjiIds:[47, 58] },
+  { surface:"本音", readingOK:["ほんね"], meaning:"pravé úmysly/názory", kanjiIds:[58, 48] },
+  { surface:"本人", readingOK:["ほんにん"], meaning:"dotyčná osoba", kanjiIds:[58, 37] },
+  { surface:"本日", readingOK:["ほんじつ"], meaning:"dnes (formálnější)", kanjiIds:[58, 21] },
+  { surface:"文", readingOK:["ぶん"], meaning:"věta", kanjiIds:[59] },
+  { surface:"文学", readingOK:["ぶんがく"], meaning:"literatura", kanjiIds:[59, 61] },
+  { surface:"字", readingOK:["じ"], meaning:"znak, písmeno", kanjiIds:[60] },
+  { surface:"ローマ字", readingOK:["ローマじ"], meaning:"latinka", kanjiIds:[60] },
+  { surface:"十字", readingOK:["じゅうじ"], meaning:"kříž", kanjiIds:[10, 60] },
+  { surface:"赤十字", readingOK:["せきじゅうじ"], meaning:"Červený kříž", kanjiIds:[78, 10, 60] },
+  { surface:"文字", readingOK:["もじ"], meaning:"písmeno, znak", kanjiIds:[59, 60] },
+  { surface:"名字", readingOK:["みょうじ"], meaning:"příjmení", kanjiIds:[38, 60] },
+  { surface:"大文字", readingOK:["おおもじ"], meaning:"velké písmeno", kanjiIds:[18, 59, 60] },
+  { surface:"小文字", readingOK:["こもじ"], meaning:"malé písmeno", kanjiIds:[19, 59, 60] },
+  { surface:"赤字", readingOK:["あかじ"], meaning:"deficit", kanjiIds:[78, 60] },
+  { surface:"学ぶ", readingOK:["まなぶ"], meaning:"učit se", kanjiIds:[61] },
+  { surface:"学生", readingOK:["がくせい"], meaning:"student, školák", kanjiIds:[61, 32] },
+  { surface:"大学", readingOK:["だいがく"], meaning:"univerzita", kanjiIds:[18, 61] },
+  { surface:"入学", readingOK:["にゅうがく"], meaning:"nástup na školu", kanjiIds:[52, 61] },
+  { surface:"文学", readingOK:["ぶんがく"], meaning:"literatura", kanjiIds:[59, 61] },
+  { surface:"学校", readingOK:["がっこう"], meaning:"škola", kanjiIds:[61, 62] },
+  { surface:"小学校", readingOK:["しょうがっこう"], meaning:"první stupeň ZŠ", kanjiIds:[19, 61, 62] },
+  { surface:"女子校", readingOK:["じょしこう"], meaning:"dívčí škola", kanjiIds:[39, 41, 62] },
+  { surface:"校長", readingOK:["こうちょう"], meaning:"ředitel", kanjiIds:[62, 90] },
+  { surface:"村", readingOK:["むら"], meaning:"vesnice", kanjiIds:[63] },
+  { surface:"村人", readingOK:["むらびと"], meaning:"vesničan", kanjiIds:[63, 37] },
+  { surface:"村上", readingOK:["むらかみ"], meaning:"Murakami", kanjiIds:[63, 13] },
+  { surface:"木村", readingOK:["きむら"], meaning:"Kimura", kanjiIds:[24, 63] },
+  { surface:"村長", readingOK:["そんちょう"], meaning:"předák vesnice", kanjiIds:[63, 90] },
+  { surface:"町", readingOK:["まち"], meaning:"město (menší)", kanjiIds:[64] },
+  { surface:"町長", readingOK:["ちょうちょう"], meaning:"starosta", kanjiIds:[64, 90] },
+  { surface:"町名", readingOK:["ちょうめい"], meaning:"název města", kanjiIds:[64, 38] },
+  { surface:"町人", readingOK:["ちょうにん"], meaning:"měšťan (arch.)", kanjiIds:[64, 37] },
+  { surface:"森", readingOK:["もり"], meaning:"les", kanjiIds:[65] },
+  { surface:"正しい", readingOK:["ただしい"], meaning:"správný", kanjiIds:[66] },
+  { surface:"正月", readingOK:["しょうがつ"], meaning:"Nový rok", kanjiIds:[66, 20] },
+  { surface:"正気", readingOK:["しょうき"], meaning:"příčetnost", kanjiIds:[66, 50] },
+  { surface:"水", readingOK:["みず"], meaning:"voda", kanjiIds:[67] },
+  { surface:"水中", readingOK:["すいちゅう"], meaning:"ve vodě, pod vodou", kanjiIds:[67, 17] },
+  { surface:"水曜日", readingOK:["すいようび"], meaning:"středa", kanjiIds:[67, 120, 21] },
+  { surface:"火", readingOK:["ひ"], meaning:"oheň", kanjiIds:[68] },
+  { surface:"花火", readingOK:["はなび"], meaning:"ohňostroj", kanjiIds:[33, 68] },
+  { surface:"火花", readingOK:["ひばな"], meaning:"jiskra", kanjiIds:[68, 33] },
+  { surface:"出火", readingOK:["しゅっか"], meaning:"vypuknutí požáru", kanjiIds:[53, 68] },
+  { surface:"火曜日", readingOK:["かようび"], meaning:"úterý", kanjiIds:[68, 120, 21] },
+  { surface:"玉", readingOK:["たま"], meaning:"míč", kanjiIds:[69] },
+  { surface:"玉子", readingOK:["たまご"], meaning:"vejce (tepelně upravené)", kanjiIds:[69, 41] },
+  { surface:"目玉", readingOK:["めだま"], meaning:"oční bulva", kanjiIds:[42, 69] },
+  { surface:"お年玉", readingOK:["おとしだま"], meaning:"novoroční finanční dar pro děti", kanjiIds:[22, 69] },
+  { surface:"100円玉", readingOK:["ひゃくえんだま"], meaning:"stojenová mince", kanjiIds:[51, 69] },
+  { surface:"玉ねぎ", readingOK:["たまねぎ"], meaning:"cibule (kulatá)", kanjiIds:[69] },
+  { surface:"金玉", readingOK:["きんたま"], meaning:"varlata (hovorově)", kanjiIds:[76, 69] },
+  { surface:"王", readingOK:["おう"], meaning:"král", kanjiIds:[70] },
+  { surface:"女王", readingOK:["じょおう"], meaning:"královna", kanjiIds:[39, 70] },
+  { surface:"王子", readingOK:["おうじ"], meaning:"princ", kanjiIds:[70, 41] },
+  { surface:"王女", readingOK:["おうじょ"], meaning:"princezna", kanjiIds:[70, 39] },
+  { surface:"王国", readingOK:["おうこく"], meaning:"království", kanjiIds:[70] },
+  { surface:"石", readingOK:["いし"], meaning:"kámen", kanjiIds:[71] },
+  { surface:"小石", readingOK:["こいし"], meaning:"kamínek", kanjiIds:[19, 71] },
+  { surface:"宝石", readingOK:["ほうせき"], meaning:"drahokam", kanjiIds:[71] },
+  { surface:"化石", readingOK:["かせき"], meaning:"zkamenělina", kanjiIds:[71] },
+  { surface:"竹", readingOK:["たけ"], meaning:"bambus", kanjiIds:[72] },
+  { surface:"竹の子", readingOK:["たけのこ"], meaning:"bambusový výhonek", kanjiIds:[72, 41] },
+  { surface:"竹林", readingOK:["ちくりん"], meaning:"bambusový háj", kanjiIds:[72, 25] },
+  { surface:"糸", readingOK:["いと"], meaning:"vlákno", kanjiIds:[73] },
+  { surface:"糸車", readingOK:["いとぐるま"], meaning:"kolovrátek", kanjiIds:[73, 75] },
+  { surface:"金糸", readingOK:["きんし"], meaning:"zlaté vlákno", kanjiIds:[76, 73] },
+  { surface:"貝", readingOK:["かい"], meaning:"mušle", kanjiIds:[74] },
+  { surface:"車", readingOK:["くるま"], meaning:"auto, vůz", kanjiIds:[75] },
+  { surface:"人力車", readingOK:["じんりきしゃ"], meaning:"rikša", kanjiIds:[37, 49, 75] },
+  { surface:"お金", readingOK:["おかね"], meaning:"peníze", kanjiIds:[76] },
+  { surface:"金曜日", readingOK:["きんようび"], meaning:"pátek", kanjiIds:[76, 120, 21] },
+  { surface:"金メダル", readingOK:["きんめだる"], meaning:"zlatá medaile", kanjiIds:[76] },
+  { surface:"金魚", readingOK:["きんぎょ"], meaning:"zlatá rybka", kanjiIds:[76] },
+  { surface:"年金", readingOK:["ねんきん"], meaning:"důchod", kanjiIds:[22, 76] },
+  { surface:"雨", readingOK:["あめ"], meaning:"déšť", kanjiIds:[77] },
+  { surface:"大雨", readingOK:["おおあめ"], meaning:"velký déšť", kanjiIds:[18, 77] },
+  { surface:"雨天", readingOK:["うてん"], meaning:"deštivé počasí", kanjiIds:[77, 31] },
+  { surface:"赤", readingOK:["あか"], meaning:"červená barva", kanjiIds:[78] },
+  { surface:"赤い", readingOK:["あかい"], meaning:"červený", kanjiIds:[78] },
+  { surface:"赤ちゃん", readingOK:["あかちゃん"], meaning:"miminko", kanjiIds:[78] },
+  { surface:"赤字", readingOK:["あかじ"], meaning:"deficit", kanjiIds:[78, 60] },
+  { surface:"赤十字", readingOK:["せきじゅうじČervený"], meaning:"kříž", kanjiIds:[78, 10, 60] },
+  { surface:"青", readingOK:["あお"], meaning:"modrá barva (někdy i zelená)", kanjiIds:[79] },
+  { surface:"青い", readingOK:["あおい"], meaning:"modrý", kanjiIds:[79] },
+  { surface:"青年", readingOK:["せいねん"], meaning:"mladík", kanjiIds:[79, 22] },
+  { surface:"白", readingOK:["しろ"], meaning:"bílá barva", kanjiIds:[80] },
+  { surface:"白い", readingOK:["しろい"], meaning:"bílý", kanjiIds:[80] },
+  { surface:"白人", readingOK:["はくじん"], meaning:"běloch", kanjiIds:[80, 37] },
+  { surface:"空白", readingOK:["くうはく"], meaning:"prázdné pole", kanjiIds:[29, 80] },
+  { surface:"数", readingOK:["かず"], meaning:"počet", kanjiIds:[81] },
+  { surface:"数学", readingOK:["すうがく"], meaning:"matematika", kanjiIds:[81, 61] },
+  { surface:"数字", readingOK:["すうじ"], meaning:"číslice", kanjiIds:[81, 60] },
+  { surface:"多い", readingOK:["おおい"], meaning:"něčeho je hodně (i adj)", kanjiIds:[82] },
+  { surface:"大多数", readingOK:["だいたすう"], meaning:"velká většina", kanjiIds:[18, 82, 81] },
+  { surface:"大多数は日本人です。", readingOK:["Většina"], meaning:"jsou Japonci.", kanjiIds:[18, 82, 81, 21, 58, 37] },
+  { surface:"少ない", readingOK:["すくない"], meaning:"něčeho je málo (i adj)", kanjiIds:[83] },
+  { surface:"少し", readingOK:["すこし"], meaning:"trochu", kanjiIds:[83] },
+  { surface:"少年", readingOK:["しょうねん"], meaning:"hoch", kanjiIds:[83, 22] },
+  { surface:"少女", readingOK:["しょうじょ"], meaning:"dívka", kanjiIds:[83, 39] },
+  { surface:"万", readingOK:["まん"], meaning:"deset tisíc", kanjiIds:[84] },
+  { surface:"一万円", readingOK:["いちまんえん"], meaning:"deset tisíc jenů", kanjiIds:[1, 84, 51] },
+  { surface:"二万", readingOK:["にまん"], meaning:"dvacet tisíc", kanjiIds:[2, 84] },
+  { surface:"万一", readingOK:["まんいち"], meaning:"kdyby náhodou", kanjiIds:[84, 1] },
+  { surface:"半", readingOK:["はん"], meaning:"půl", kanjiIds:[85] },
+  { surface:"二時半", readingOK:["にじはん"], meaning:"půl třetí", kanjiIds:[2, 119, 85] },
+  { surface:"半ば", readingOK:["なかば"], meaning:"polovina", kanjiIds:[85] },
+  { surface:"19世紀半ば", readingOK:["polovina"], meaning:"19. Století", kanjiIds:[85] },
+  { surface:"半分", readingOK:["はんぶん"], meaning:"poloviční díl", kanjiIds:[85, 124] },
+  { surface:"形", readingOK:["かたち"], meaning:"tvar", kanjiIds:[86] },
+  { surface:"あたまの形", readingOK:["tvar"], meaning:"hlavy", kanjiIds:[86] },
+  { surface:"人形", readingOK:["にんぎょう"], meaning:"loutka", kanjiIds:[37, 86] },
+  { surface:"三角形", readingOK:["さんかくけい"], meaning:"trojúhelník", kanjiIds:[3, 95, 86] },
+  { surface:"太い", readingOK:["ふとい"], meaning:"tlustý", kanjiIds:[87] },
+  { surface:"太る", readingOK:["ふとる"], meaning:"tloustnout", kanjiIds:[87] },
+  { surface:"丸太", readingOK:["まるた"], meaning:"kláda", kanjiIds:[92, 87] },
+  { surface:"細い", readingOK:["ほそい"], meaning:"tenký", kanjiIds:[88] },
+  { surface:"細い糸", readingOK:["tenká"], meaning:"nit", kanjiIds:[88, 73] },
+  { surface:"細かい", readingOK:["こまかい"], meaning:"drobný", kanjiIds:[88] },
+  { surface:"細かいお金", readingOK:["drobné"], meaning:"(peníze)", kanjiIds:[88, 76] },
+  { surface:"広い", readingOK:["ひろい"], meaning:"široký, prostorný", kanjiIds:[89] },
+  { surface:"長い", readingOK:["ながい"], meaning:"dlouhý", kanjiIds:[90] },
+  { surface:"長男", readingOK:["ちょうなん"], meaning:"nejstarší syn", kanjiIds:[90, 40] },
+  { surface:"校長", readingOK:["こうちょう"], meaning:"ředitel", kanjiIds:[62, 90] },
+  { surface:"点", readingOK:["てん"], meaning:"tečka; bod", kanjiIds:[91] },
+  { surface:"丸", readingOK:["まる"], meaning:"kruh", kanjiIds:[92] },
+  { surface:"日の丸", readingOK:["ひのまる"], meaning:"označení pro japonskou vlajku (sluneční kotouč)", kanjiIds:[21, 92] },
+  { surface:"丸い", readingOK:["まるい"], meaning:"kulatý (3D)", kanjiIds:[92] },
+  { surface:"丸太", readingOK:["まるた"], meaning:"kláda", kanjiIds:[92, 87] },
+  { surface:"交わる", readingOK:["まじわる"], meaning:"protínat se", kanjiIds:[93] },
+  { surface:"交点", readingOK:["こうてん"], meaning:"průsečík", kanjiIds:[93, 91] },
+  { surface:"光", readingOK:["ひかり"], meaning:"světlo", kanjiIds:[94] },
+  { surface:"光る", readingOK:["ひかる"], meaning:"svítit", kanjiIds:[94] },
+  { surface:"日光", readingOK:["にっこう"], meaning:"sluneční světlo", kanjiIds:[21, 94] },
+  { surface:"光学", readingOK:["こうがく"], meaning:"optika", kanjiIds:[94, 61] },
+  { surface:"角", readingOK:["かど"], meaning:"roh (domu)", kanjiIds:[95] },
+  { surface:"角を曲がる", readingOK:["かどをまがる"], meaning:"zahnout za roh", kanjiIds:[95] },
+  { surface:"角", readingOK:["つの"], meaning:"roh (zvířete)", kanjiIds:[95] },
+  { surface:"牛の角", readingOK:["うしのつの"], meaning:"kraví roh", kanjiIds:[95] },
+  { surface:"四角", readingOK:["しかく"], meaning:"čtverec", kanjiIds:[4, 95] },
+  { surface:"計る", readingOK:["はかる"], meaning:"počítat, měřit", kanjiIds:[96] },
+  { surface:"時計", readingOK:["とけい"], meaning:"hodiny/hodinky", kanjiIds:[119, 96] },
+  { surface:"直す", readingOK:["なおす"], meaning:"opravit", kanjiIds:[97] },
+  { surface:"正直な", readingOK:["しょうじきな"], meaning:"upřímný", kanjiIds:[66, 97] },
+  { surface:"線", readingOK:["せん"], meaning:"linka, čára", kanjiIds:[98] },
+  { surface:"赤外線", readingOK:["せきがいせん"], meaning:"infračervené záření", kanjiIds:[78, 98] },
+  { surface:"新幹線", readingOK:["しんかんせん"], meaning:"šinkansen", kanjiIds:[98] },
+  { surface:"直線", readingOK:["ちょくせん"], meaning:"přímka", kanjiIds:[97, 98] },
+  { surface:"光線", readingOK:["こうせん"], meaning:"paprsek (světla)", kanjiIds:[94, 98] },
+  { surface:"矢", readingOK:["や"], meaning:"šíp", kanjiIds:[99] },
+  { surface:"弓矢", readingOK:["ゆみや"], meaning:"luk a šíp", kanjiIds:[99] },
+  { surface:"弱い", readingOK:["よわい"], meaning:"slabý", kanjiIds:[100] },
+  { surface:"弱点", readingOK:["じゃくてん"], meaning:"slabina", kanjiIds:[100, 91] },
+  { surface:"弱虫", readingOK:["よわむし"], meaning:"slaboch", kanjiIds:[100, 35] },
+  { surface:"強い", readingOK:["つよい"], meaning:"silný", kanjiIds:[101] },
+  { surface:"勉強", readingOK:["べんきょう"], meaning:"studium", kanjiIds:[101] },
+  { surface:"強力な", readingOK:["きょうりょくな"], meaning:"silný (formálnější)", kanjiIds:[101, 49] },
+  { surface:"高い", readingOK:["たかい"], meaning:"vysoký; drahý", kanjiIds:[102] },
+  { surface:"高校", readingOK:["こうこう"], meaning:"střední škola", kanjiIds:[102, 62] },
+  { surface:"同じ", readingOK:["おなじ"], meaning:"stejný", kanjiIds:[103] },
+  { surface:"同時に", readingOK:["どうじに"], meaning:"ve stejný čas", kanjiIds:[103, 119] },
+  { surface:"親しい", readingOK:["したしい"], meaning:"blízký", kanjiIds:[104] },
+  { surface:"親しい友達", readingOK:["したしいともだち"], meaning:"blízký kamarád", kanjiIds:[104, 112] },
+  { surface:"親", readingOK:["おや"], meaning:"rodiče (hovorovější)", kanjiIds:[104] },
+  { surface:"母", readingOK:["はは"], meaning:"matka", kanjiIds:[105] },
+  { surface:"お母さん", readingOK:["おかあさん"], meaning:"maminka", kanjiIds:[105] },
+  { surface:"母親", readingOK:["ははおや"], meaning:"matka", kanjiIds:[105, 104] },
+  { surface:"母国語", readingOK:["ぼこくご"], meaning:"mateřský jazyk", kanjiIds:[105] },
+  { surface:"父", readingOK:["ちち"], meaning:"otec", kanjiIds:[106] },
+  { surface:"お父さん", readingOK:["おとうさん"], meaning:"tatínek", kanjiIds:[106] },
+  { surface:"父親", readingOK:["ちちおや"], meaning:"otec", kanjiIds:[106, 104] },
+  { surface:"姉", readingOK:["あね"], meaning:"starší sestra (vlastní)", kanjiIds:[107] },
+  { surface:"お姉さん", readingOK:["おねえさん"], meaning:"starší sestra (uctivější)", kanjiIds:[107] },
+  { surface:"兄", readingOK:["あに"], meaning:"starší bratr", kanjiIds:[108] },
+  { surface:"お兄さん", readingOK:["おにいさん"], meaning:"starší bratr (uctivější)", kanjiIds:[108] },
+  { surface:"兄弟", readingOK:["きょうだい"], meaning:"sourozenci; bratři", kanjiIds:[108, 109] },
+  { surface:"弟", readingOK:["おとうと"], meaning:"mladší bratr", kanjiIds:[109] },
+  { surface:"弟子", readingOK:["でし"], meaning:"učeň", kanjiIds:[109, 41] },
+  { surface:"妹", readingOK:["いもうと"], meaning:"mladší sestra", kanjiIds:[110] },
+  { surface:"姉妹", readingOK:["しまい"], meaning:"sestry", kanjiIds:[107, 110] },
+  { surface:"自分", readingOK:["じぶん"], meaning:"člověk sám; já", kanjiIds:[111, 124] },
+  { surface:"自分の車", readingOK:["vlastní"], meaning:"auto", kanjiIds:[111, 124, 75] },
+  { surface:"自分でやってください", readingOK:["udělej"], meaning:"to sám", kanjiIds:[111, 124] },
+  { surface:"自立", readingOK:["じりつ"], meaning:"samostatnost", kanjiIds:[111, 54] },
+  { surface:"自立する", readingOK:["osamostatnit"], meaning:"se", kanjiIds:[111, 54] },
+  { surface:"友", readingOK:["とも"], meaning:"druh, přítel", kanjiIds:[112] },
+  { surface:"友人", readingOK:["ゆうじん"], meaning:"přítel (formálnější)", kanjiIds:[112, 37] },
+  { surface:"私の友人", readingOK:["わたしのゆうじん"], meaning:"můj přítel", kanjiIds:[112, 37] },
+  { surface:"親友", readingOK:["しんゆう"], meaning:"blízký přítel/dobrý kamarád", kanjiIds:[104, 112] },
+  { surface:"体", readingOK:["からだ"], meaning:"tělo", kanjiIds:[113] },
+  { surface:"体力", readingOK:["たいりょく"], meaning:"fyzická síla", kanjiIds:[113, 49] },
+  { surface:"体力が弱", readingOK:["たいりょくよわまる"], meaning:"ubývá sil", kanjiIds:[113, 49, 100] },
+  { surface:"毛", readingOK:["け"], meaning:"chlupy; srst", kanjiIds:[114] },
+  { surface:"毛虫", readingOK:["けむし"], meaning:"housenka", kanjiIds:[114, 35] },
+  { surface:"頭", readingOK:["あたま"], meaning:"hlava", kanjiIds:[115] },
+  { surface:"先頭", readingOK:["せんとう"], meaning:"přední pozice", kanjiIds:[56, 115] },
+  { surface:"先頭に立つ", readingOK:["stát"], meaning:"v čele", kanjiIds:[56, 115, 54] },
+  { surface:"三頭", readingOK:["さんとう"], meaning:"tři velká zvířata", kanjiIds:[3, 115] },
+  { surface:"顔", readingOK:["かお"], meaning:"obličej", kanjiIds:[116] },
+  { surface:"顔文字", readingOK:["かおもじ"], meaning:"smajlík", kanjiIds:[116, 59, 60] },
+  { surface:"首", readingOK:["くび"], meaning:"krk", kanjiIds:[117] },
+  { surface:"足首", readingOK:["あしくび"], meaning:"kotník", kanjiIds:[46, 117] },
+  { surface:"心", readingOK:["こころ"], meaning:"srdce; duše", kanjiIds:[118] },
+  { surface:"中心", readingOK:["ちゅうしん"], meaning:"střed", kanjiIds:[17, 118] },
+  { surface:"町の中心", readingOK:["machi no chuushin"], meaning:"střed města", kanjiIds:[64, 17, 118] },
+  { surface:"安心", readingOK:["あんしん"], meaning:"klid", kanjiIds:[118] },
+  { surface:"時", readingOK:["とき"], meaning:"čas", kanjiIds:[119] },
+  { surface:"子供の時", readingOK:["こどものとき"], meaning:"doba dětství", kanjiIds:[41, 119] },
+  { surface:"５時", readingOK:["じ"], meaning:"pět hodin", kanjiIds:[119] },
+  { surface:"同時", readingOK:["どうじ"], meaning:"ve stejnou dobu", kanjiIds:[103, 119] },
+  { surface:"何曜日", readingOK:["なんようび"], meaning:"Který den v týdnu?", kanjiIds:[120, 21] },
+  { surface:"朝", readingOK:["あさ"], meaning:"ráno", kanjiIds:[121] },
+  { surface:"昼", readingOK:["ひる"], meaning:"poledne;den", kanjiIds:[122] },
+  { surface:"夜", readingOK:["よる"], meaning:"noc", kanjiIds:[123] },
+  { surface:"夜中", readingOK:["よなか"], meaning:"uprostřed noci", kanjiIds:[123, 17] },
+  { surface:"分", readingOK:["ぶん"], meaning:"díl", kanjiIds:[124] },
+  { surface:"半分", readingOK:["はんぶん"], meaning:"polovina", kanjiIds:[85, 124] },
+  { surface:"間", readingOK:["しゅうかん"], meaning:"týden", kanjiIds:[125] },
+];
+
+
+/* ============================================================
+   🧠 LOGIKA 
+   ============================================================ */
+
+const nfkc = s => s.normalize("NFKC").trim();
+
+function formatTime(sec){
+  const m=Math.floor(sec/60);
+  return m+":"+String(sec%60).padStart(2,"0");
+}
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function filterByRange(words, from, to) {
+  return words.filter(w =>
+    w.kanjiIds.every(id => id >= from && id <= to)
+  );
+}
+
+let pool=[], queue=[], current=null;
+let ok=0,bad=0,streak=0,start=Date.now(),timer=null;
+
+const els={
+  noRepeat:document.getElementById("noRepeat"),
+  autoNext:document.getElementById("autoNext"),
+  base:document.getElementById("base"),
+  rangeFrom:document.getElementById("rangeFrom"),
+  rangeTo:document.getElementById("rangeTo"),
+  applyRange:document.getElementById("applyRange"),
+  reset:document.getElementById("reset"),
+  submit:document.getElementById("submit"),
+  skip:document.getElementById("skip"),
+  kanji:document.getElementById("kanji"),
+  readingChoices:document.getElementById("readingChoices"),
+  meaningChoices:document.getElementById("meaningChoices"),
+  feedback:document.getElementById("feedback"),
+  ok:document.getElementById("ok"),
+  bad:document.getElementById("bad"),
+  streak:document.getElementById("streak"),
+  time:document.getElementById("time"),
+  promptLabel:document.getElementById("promptLabel"),
+  labelGroup1:document.getElementById("labelGroup1"),
+  labelGroup2:document.getElementById("labelGroup2")
+};
+
+function startClock(){
+  if(timer) clearInterval(timer);
+  start=Date.now();
+  timer=setInterval(()=>{
+    const s=Math.floor((Date.now()-start)/1000);
+    els.time.textContent=formatTime(s);
+  },500);
+}
+
+function updateStats(){
+  els.ok.textContent=ok;
+  els.bad.textContent=bad;
+  els.streak.textContent=streak;
+}
+
+function renderChoices(it){
+  const base=els.base.value;
+  const others=pool.filter(x=>x!==it);
+
+  const kanjiSet=new Set([it.surface]);
+  shuffle(others).slice(0,3).forEach(x=>kanjiSet.add(x.surface));
+  const kanjiArr=shuffle([...kanjiSet]);
+
+  const readingSet=new Set([it.readingOK]);
+  shuffle(others).slice(0,3).forEach(x=>readingSet.add(x.readingOK[0]));
+  const readingArr=shuffle([...readingSet]);
+
+  const meaningSet=new Set([it.meaning]);
+  shuffle(others).slice(0,3).forEach(x=>meaningSet.add(x.meaning));
+  const meaningArr=shuffle([...meaningSet]);
+
+  els.readingChoices.innerHTML="";
+  els.meaningChoices.innerHTML="";
+
+  if(base==="kanji"){
+    els.promptLabel.textContent="Kanji";
+    els.kanji.textContent=it.surface;
+
+    els.labelGroup1.textContent="Vyber čtení (kana)";
+    els.labelGroup2.textContent="Vyber význam (česky)";
+
+    els.readingChoices.innerHTML=readingArr
+      .map(r=>`<button class="choice" data-type="reading" data-val="${r}">${r}</button>`).join("");
+
+    els.meaningChoices.innerHTML=meaningArr
+      .map(m=>`<button class="choice" data-type="meaning" data-val="${m}">${m}</button>`).join("");
+  }
+  else if(base==="reading"){
+    els.promptLabel.textContent="Čtení (kana)";
+    els.kanji.textContent=it.readingOK[0];
+
+    els.labelGroup1.textContent="Vyber kanji";
+    els.labelGroup2.textContent="Vyber význam";
+
+    els.readingChoices.innerHTML=kanjiArr
+      .map(k=>`<button class="choice" data-type="kanji" data-val="${k}">${k}</button>`).join("");
+
+    els.meaningChoices.innerHTML=meaningArr
+      .map(m=>`<button class="choice" data-type="meaning" data-val="${m}">${m}</button>`).join("");
+  }
+  else{
+    els.promptLabel.textContent="Význam";
+    els.kanji.textContent=it.meaning;
+
+    els.labelGroup1.textContent="Vyber kanji";
+    els.labelGroup2.textContent="Vyber čtení";
+
+    els.readingChoices.innerHTML=kanjiArr
+      .map(k=>`<button class="choice" data-type="kanji" data-val="${k}">${k}</button>`).join("");
+
+    els.meaningChoices.innerHTML=readingArr
+      .map(r=>`<button class="choice" data-type="reading" data-val="${r}">${r}</button>`).join("");
+  }
+
+  [...document.querySelectorAll(".choice")].forEach(btn=>{
+    btn.onclick=()=>{
+      const g=btn.dataset.type;
+      [...document.querySelectorAll(`.choice[data-type="${g}"]`)]
+        .forEach(b=>b.classList.remove("selected"));
+      btn.classList.add("selected");
+    };
+  });
+}
+
+function nextQuestion(){
+  if(pool.length===0){
+    els.feedback.textContent="🛈 Žádná slovíčka v rozsahu.";
+    return;
+  }
+  if(els.noRepeat.checked){
+    if(queue.length===0){
+      queue=pool.map((_,i)=>i);
+      shuffle(queue);
+    }
+    current=queue.shift();
+  }else{
+    current=Math.floor(Math.random()*pool.length);
+  }
+  els.feedback.textContent="";
+  renderChoices(pool[current]);
+}
+
+function check(){
+  const it=pool[current];
+  const base=els.base.value;
+
+  let type1,type2;
+  if(base==="kanji"){ type1="reading"; type2="meaning"; }
+  else if(base==="reading"){ type1="kanji"; type2="meaning"; }
+  else{ type1="kanji"; type2="reading"; }
+
+  const sel1=document.querySelector(`.choice[data-type="${type1}"].selected`);
+  const sel2=document.querySelector(`.choice[data-type="${type2}"].selected`);
+
+  if(!sel1||!sel2){
+    els.feedback.textContent="💡 Vyber obě odpovědi.";
+    return;
+  }
+
+  const v1=sel1.dataset.val;
+  const v2=sel2.dataset.val;
+
+  const ok1 = (type1==="kanji"&&v1===it.surface)
+           || (type1==="reading"&&v1===it.readingOK[0])
+           || (type1==="meaning"&&v1===it.meaning);
+
+  const ok2 = (type2==="kanji"&&v2===it.surface)
+           || (type2==="reading"&&v2===it.readingOK[0])
+           || (type2==="meaning"&&v2===it.meaning);
+
+  if(ok1 && ok2){
+    ok++; streak++;
+    els.feedback.textContent="✅ Správně!";
+    updateStats();
+    setTimeout(nextQuestion,450);
+  } else {
+    bad++; streak=0;
+    els.feedback.textContent=`❌ Správně má být: ${it.surface} [${it.readingOK[0]}] = ${it.meaning}`;
+    updateStats();
+    if(els.autoNext.checked) setTimeout(nextQuestion,900);
+  }
+}
+
+
+/* ============================================================
+   🔧 OVLÁDÁNÍ
+   ============================================================ */
+
+els.submit.onclick = check;
+els.skip.onclick = ()=>{ bad++; streak=0; updateStats(); nextQuestion(); };
+els.base.onchange = ()=> nextQuestion();
+
+els.reset.onclick = ()=>{
+  ok=bad=streak=0;
+  updateStats();
+  els.applyRange.onclick();
+};
+
+els.applyRange.onclick = ()=>{
+  const from=Number(els.rangeFrom.value);
+  const to=Number(els.rangeTo.value);
+
+  pool = filterByRange(WORDS, from, to);
+  queue = pool.map((_,i)=>i);
+  shuffle(queue);
+
+  ok=bad=streak=0;
+  updateStats();
+
+  nextQuestion();
+  startClock();
+};
+
+
+/* ============================================================
+   🚀 START
+   ============================================================ */
+
+els.applyRange.onclick();
+
+</script>
+</body>
+</html>
