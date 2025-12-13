@@ -91,7 +91,7 @@ h1{margin:0 0 4px;font-size:clamp(20px,3.6vw,28px)}
       <label>Rozsah kanji:
         <input id="rangeFrom" type="number" min="1" max="125" value="1" style="width:4.5em">
         –
-        <input id="rangeTo" type="number" min="1" max="125" value="20" style="width:4.5em">
+        <input id="rangeTo" type="number" min="1" max="125" value="130" style="width:4.5em">
       </label>
 
       <button id="applyRange" class="btn">Nastavit</button>
@@ -658,7 +658,17 @@ const WORDS = [
   { surface:"夜中", readingOK:["よなか"], meaning:"uprostřed noci", kanjiIds:[123, 17] },
   { surface:"分", readingOK:["ぶん"], meaning:"díl", kanjiIds:[124] },
   { surface:"半分", readingOK:["はんぶん"], meaning:"polovina", kanjiIds:[85, 124] },
-  { surface:"間", readingOK:["しゅうかん"], meaning:"týden", kanjiIds:[125] },
+  { surface:"週間", readingOK:["しゅうかん"], meaning:"týden", kanjiIds:[125] },
+  { surface:"春", readingOK:["はる"], meaning:"jaro", kanjiIds:[126] },
+  { surface:"夏", readingOK:["なつ"], meaning:"léto", kanjiIds:[127] },
+  { surface:"夏休み", readingOK:["なつやす"], meaning:"letní prázdniny", kanjiIds:[127, 55] },
+  { surface:"秋", readingOK:["あき"], meaning:"podzim", kanjiIds:[128] },
+  { surface:"冬", readingOK:["ふゆ"], meaning:"zima", kanjiIds:[129] },
+  { surface:"今", readingOK:["いま"], meaning:"teď", kanjiIds:[130] },
+  { surface:"今日", readingOK:["きょう"], meaning:"dnes", kanjiIds:[130, 21] },
+  { surface:"今週", readingOK:["こんしゅう"], meaning:"tento týden", kanjiIds:[130, 125] },
+  { surface:"今年", readingOK:["ことし"], meaning:"letos", kanjiIds:[130, 22] },
+  { surface:"今月", readingOK:["こんげつ"], meaning:"tento měsíc", kanjiIds:[130, 20] },
 ];
 
 
